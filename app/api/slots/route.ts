@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchVenueSessions, flattenSlots, VENUES, VenueKey } from "@/lib/clubspark";
+import { fetchVenueSessions, fetchVenueSettings, flattenSlots, pickRole, VENUES, VenueKey } from "@/lib/clubspark";
 
 export const revalidate = 60;
-const ALLOWED_DURATIONS = [30, 60, 90, 120, 180];
+const ALLOWED_DURATIONS = [30, 60, 90, 120, 150, 180];
 
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get("date");
@@ -13,13 +13,21 @@ export async function GET(req: NextRequest) {
   const venue = VENUES[venueKey];
   if (!venue) return NextResponse.json({ error: "unknown venue" }, { status: 400 });
   try {
-    const raw = await fetchVenueSessions(venue, date);
+    const [raw, settings] = await Promise.all([
+      fetchVenueSessions(venue, date),
+      fetchVenueSettings(venue),
+    ]);
+    const role = pickRole(settings, venue);
+    const interval = settings.DefaultInterval || raw.MinimumInterval || 60;
+    const minDuration = role.MinimumBookingIntervals * interval;
+    const maxDuration = role.MaximumBookingIntervals * interval;
+
     let duration: number;
     if (!durationParam || durationParam === "atomic") {
       duration = raw.MinimumInterval || 60;
     } else {
       const n = Number(durationParam);
-      duration = ALLOWED_DURATIONS.includes(n) ? n : 60;
+      duration = ALLOWED_DURATIONS.includes(n) ? n : minDuration;
     }
     const slots = flattenSlots(venue, raw, date, duration);
     return NextResponse.json({
@@ -27,6 +35,9 @@ export async function GET(req: NextRequest) {
       date,
       duration,
       minimumInterval: raw.MinimumInterval,
+      bookingInterval: interval,
+      minDurationMinutes: minDuration,
+      maxDurationMinutes: maxDuration,
       slots,
     });
   } catch (e: unknown) {

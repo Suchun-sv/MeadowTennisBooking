@@ -30,6 +30,9 @@ interface ApiResponse {
   date: string;
   duration: number;
   minimumInterval: number;
+  bookingInterval: number;
+  minDurationMinutes: number;
+  maxDurationMinutes: number;
   slots: Slot[];
 }
 
@@ -73,12 +76,14 @@ export default function Page() {
   const [sheetDuration, setSheetDuration] = useState(60);
   const [byDuration, setByDuration] = useState<Record<number, ApiResponse>>({});
 
+  // Constrained by the role's Min/MaxBookingIntervals from ClubSpark.
   const sheetDurations = useMemo(() => {
-    const min = data?.minimumInterval ?? 60;
+    if (!data) return [60];
+    const step = data.bookingInterval;
     const out: number[] = [];
-    for (let d = min; d <= 180; d += min) out.push(d);
-    return out.length ? out : [60, 120, 180];
-  }, [data?.minimumInterval]);
+    for (let d = data.minDurationMinutes; d <= data.maxDurationMinutes; d += step) out.push(d);
+    return out;
+  }, [data]);
 
   // Matrix fetch (atomic = MinimumInterval).
   useEffect(() => {
@@ -190,7 +195,7 @@ export default function Page() {
       {err && <div className="m-4 p-3 rounded bg-warn/10 border border-warn/40 text-warn text-sm">{err}</div>}
 
       {!loading && !err && data && (
-        <Matrix times={times} courts={courts} cell={cell} onRowTap={(t) => { setActiveStart(t); setSheetDuration(Math.max(60, data?.minimumInterval ?? 60)); }} />
+        <Matrix times={times} courts={courts} cell={cell} onRowTap={(t) => { setActiveStart(t); setSheetDuration(data?.minDurationMinutes ?? 60); }} />
       )}
 
       {activeStart != null && (

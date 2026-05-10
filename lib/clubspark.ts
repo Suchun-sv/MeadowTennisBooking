@@ -119,6 +119,30 @@ export async function fetchVenueSessions(v: VenueConfig, date: string): Promise<
   return res.json();
 }
 
+export interface VenueSettings {
+  DefaultInterval: number;
+  Roles: { Name: string; MinimumBookingIntervals: number; MaximumBookingIntervals: number; CanBook: boolean }[];
+}
+
+export async function fetchVenueSettings(v: VenueConfig): Promise<VenueSettings> {
+  const url = `${v.apiOrigin}/v0/VenueBooking/${v.apiSlug}/GetSettings`;
+  const res = await fetch(url, {
+    headers: { Accept: "application/json, text/plain, */*", "User-Agent": "clubspark-mobile/0.2" },
+    next: { revalidate: 600 },
+  });
+  if (!res.ok) throw new Error(`ClubSpark settings ${res.status}`);
+  return res.json();
+}
+
+// Pick the role we display by default (guest unless venue overrides).
+export function pickRole(settings: VenueSettings, v: VenueConfig) {
+  const wantName = v.defaultRole === "member" ? "Member" : "Guest";
+  return (
+    settings.Roles.find((r) => r.Name.toLowerCase() === wantName.toLowerCase()) ??
+    settings.Roles[0]
+  );
+}
+
 export interface Slot {
   courtId: string;
   courtName: string;
