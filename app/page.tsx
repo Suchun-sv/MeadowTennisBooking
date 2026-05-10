@@ -24,7 +24,6 @@ interface ApiResponse {
   slots: Slot[];
 }
 
-const DURATIONS = [60, 120, 180];
 const VENUES = [
   { key: "meadows", label: "Meadows" },
   { key: "craigmillar", label: "Craigmillar" },
@@ -63,19 +62,31 @@ export default function Page() {
   const [sheetDuration, setSheetDuration] = useState(60);
   const [byDuration, setByDuration] = useState<Record<number, ApiResponse>>({});
 
+  // Sheet duration options: smallest is the venue's MinimumInterval, then
+  // multiples up to ~3h.
+  const sheetDurations = useMemo(() => {
+    const min = data?.minimumInterval ?? 60;
+    const out: number[] = [];
+    for (let d = min; d <= 180; d += min) out.push(d);
+    return out.length ? out : [60, 120, 180];
+  }, [data?.minimumInterval]);
+
+  // Matrix is fetched with duration=atomic (= MinimumInterval): 60 for
+  // Meadows, 30 for Craigmillar, so each row matches one cell on ClubSpark.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setErr(null);
     setByDuration({});
-    fetch(`/api/slots?venue=${venue}&date=${date}&duration=60`)
+    fetch(`/api/slots?venue=${venue}&date=${date}&duration=atomic`)
       .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
       .then(({ ok, j }) => {
         if (cancelled) return;
         if (!ok) setErr(j.error || "Failed to load");
         else {
-          setData(j as ApiResponse);
-          setByDuration({ 60: j as ApiResponse });
+          const resp = j as ApiResponse;
+          setData(resp);
+          setByDuration({ [resp.duration]: resp });
         }
       })
       .catch((e) => !cancelled && setErr(String(e)))
@@ -169,7 +180,7 @@ export default function Page() {
       {err && <div className="m-4 p-3 rounded bg-warn/10 border border-warn/40 text-warn text-sm">{err}</div>}
 
       {!loading && !err && data && (
-        <Matrix times={times} courts={courts} cell={cell} onRowTap={(t) => { setActiveStart(t); setSheetDuration(60); }} />
+        <Matrix times={times} courts={courts} cell={cell} onRowTap={(t) => { setActiveStart(t); setSheetDuration(Math.max(60, data?.minimumInterval ?? 60)); }} />
       )}
 
       {activeStart != null && (
@@ -182,7 +193,7 @@ export default function Page() {
               </div>
             </div>
             <div className="flex items-center bg-bg rounded-full border border-line p-0.5">
-              {DURATIONS.map((d) => (
+              {sheetDurations.map((d) => (
                 <button
                   key={d}
                   onClick={() => setSheetDuration(d)}
@@ -190,7 +201,7 @@ export default function Page() {
                     sheetDuration === d ? "bg-accent text-black font-semibold" : "text-muted"
                   }`}
                 >
-                  {d / 60}h
+                  {d % 60 === 0 ? `${d / 60}h` : `${d}m`}
                 </button>
               ))}
             </div>
