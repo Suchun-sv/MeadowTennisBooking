@@ -15,12 +15,19 @@ interface Slot {
   deepLink: string;
 }
 interface ApiResponse {
+  venue: { key: string; label: string };
   date: string;
   duration: number;
+  minimumInterval: number;
   slots: Slot[];
 }
 
 const DURATIONS = [60, 120, 180];
+const VENUES = [
+  { key: "meadows", label: "Meadows" },
+  { key: "craigmillar", label: "Craigmillar" },
+] as const;
+type VenueKey = (typeof VENUES)[number]["key"];
 
 const fmt = (m: number) =>
   `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
@@ -45,14 +52,13 @@ const nowMinutes = () => {
 };
 
 export default function Page() {
+  const [venue, setVenue] = useState<VenueKey>("meadows");
   const [date, setDate] = useState(todayISO());
-  const [data, setData] = useState<ApiResponse | null>(null); // 1h matrix
+  const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  // When user taps a row (a start-time), show its free courts as a sheet.
   const [activeStart, setActiveStart] = useState<number | null>(null);
   const [sheetDuration, setSheetDuration] = useState(60);
-  // cache per-duration responses so flipping in the sheet is instant after first fetch
   const [byDuration, setByDuration] = useState<Record<number, ApiResponse>>({});
 
   useEffect(() => {
@@ -60,7 +66,7 @@ export default function Page() {
     setLoading(true);
     setErr(null);
     setByDuration({});
-    fetch(`/api/slots?date=${date}&duration=60`)
+    fetch(`/api/slots?venue=${venue}&date=${date}&duration=60`)
       .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
       .then(({ ok, j }) => {
         if (cancelled) return;
@@ -72,26 +78,19 @@ export default function Page() {
       })
       .catch((e) => !cancelled && setErr(String(e)))
       .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [date]);
+    return () => { cancelled = true; };
+  }, [venue, date]);
 
   useEffect(() => {
     if (activeStart == null) return;
     if (byDuration[sheetDuration]) return;
     let cancelled = false;
-    fetch(`/api/slots?date=${date}&duration=${sheetDuration}`)
+    fetch(`/api/slots?venue=${venue}&date=${date}&duration=${sheetDuration}`)
       .then((r) => r.json())
-      .then((j) => {
-        if (cancelled) return;
-        setByDuration((prev) => ({ ...prev, [sheetDuration]: j as ApiResponse }));
-      })
+      .then((j) => { if (!cancelled) setByDuration((prev) => ({ ...prev, [sheetDuration]: j as ApiResponse })); })
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [activeStart, sheetDuration, date, byDuration]);
+    return () => { cancelled = true; };
+  }, [activeStart, sheetDuration, venue, date, byDuration]);
 
   const isToday = date === todayISO();
 
@@ -128,9 +127,18 @@ export default function Page() {
       <header className="sticky top-0 z-20 backdrop-blur bg-bg/85 border-b border-line">
         <div className="px-4 pt-3 pb-3 space-y-3">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-muted text-[10px] uppercase tracking-[0.2em]">Meadows Tennis</div>
-              <div className="text-lg font-semibold">{prettyDate(date)}{isToday && <span className="text-accent text-xs ml-2">today</span>}</div>
+            <div className="flex items-center bg-card rounded-full border border-line p-0.5">
+              {VENUES.map((v) => (
+                <button
+                  key={v.key}
+                  onClick={() => setVenue(v.key)}
+                  className={`px-3 h-8 rounded-full text-sm transition ${
+                    venue === v.key ? "bg-accent text-black font-semibold" : "text-muted"
+                  }`}
+                >
+                  {v.label}
+                </button>
+              ))}
             </div>
             <input
               type="date"
@@ -138,6 +146,10 @@ export default function Page() {
               onChange={(e) => e.target.value && setDate(e.target.value)}
               className="bg-card border border-line rounded-lg px-2 py-1.5 text-sm"
             />
+          </div>
+          <div className="text-lg font-semibold">
+            {prettyDate(date)}
+            {isToday && <span className="text-accent text-xs ml-2">today</span>}
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setDate(addDays(date, -1))} className="h-9 w-9 rounded-full bg-card border border-line text-lg active:scale-95">‹</button>
@@ -214,7 +226,11 @@ export default function Page() {
           <span className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded bg-accent/30 border border-accent/50" /> free</span>
           <span className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded bg-line/40 border border-line" /> taken</span>
           <a
-            href={`https://clubspark.net/EdinburghLeisure/Booking/BookByDate#?date=${date}&role=guest`}
+            href={
+              venue === "meadows"
+                ? `https://clubspark.net/EdinburghLeisure/Booking/BookByDate#?date=${date}&role=guest`
+                : `https://www.craigmillarparktennis.co.uk/Booking/BookByDate#?date=${date}&role=member`
+            }
             target="_blank"
             rel="noreferrer"
             className="text-accent font-semibold"

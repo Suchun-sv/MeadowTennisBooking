@@ -1,19 +1,49 @@
-// All ClubSpark-specific quirks live in this file. If they change anything,
-// patch here.
-//
-// Discovered by capturing XHR traffic on
-// https://clubspark.net/EdinburghLeisure/Booking/BookByDate :
-//   GET /v0/VenueBooking/EdinburghLeisure/GetSettings
-//   GET /v0/VenueBooking/EdinburghLeisure/GetVenueSessions
-//        ?resourceID=&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&roleId=
-//
-// Times are minutes from midnight in Europe/London. Categories observed:
-//   0    : open bookable slot (has Cost, Capacity:1)
-//   1000 : existing booking (private/recurring)
-//   3000 : match / event
+// Venue-agnostic ClubSpark client. ClubSpark serves multiple venues from
+// the same code: some on `clubspark.net/{slug}/...` (subdirectory mode)
+// and some on their own domain (`VenueMode = 'domain'`). Both expose:
+//   GET {host}/v0/VenueBooking/{slug}/GetSettings
+//   GET {host}/v0/VenueBooking/{slug}/GetVenueSessions?...
+// and the booking page deep-link:
+//   GET {host}/{venuePathPrefix}Booking/Book?ResourceID=&Date=&SessionID=
+//        &StartTime=&EndTime=&Category=&SubCategory=&VenueID=&ResourceGroupID=
 
-const VENUE = "EdinburghLeisure";
-const BASE = `https://clubspark.net/v0/VenueBooking/${VENUE}`;
+export type VenueKey = "meadows" | "craigmillar";
+
+interface VenueConfig {
+  key: VenueKey;
+  label: string;
+  // Base URL incl. subdirectory if any (no trailing slash).
+  // Booking deep link uses `${base}/Booking/Book?...` and the role/date listing
+  // uses `${base}/Booking/BookByDate#?date=...&role=guest`.
+  base: string;
+  // Slug used in /v0/VenueBooking/{slug}/...
+  apiSlug: string;
+  // Origin for the API call. Usually same as base origin.
+  apiOrigin: string;
+  venueId: string;
+  defaultRole: "guest" | "member";
+}
+
+export const VENUES: Record<VenueKey, VenueConfig> = {
+  meadows: {
+    key: "meadows",
+    label: "Meadows Tennis",
+    base: "https://clubspark.net/EdinburghLeisure",
+    apiSlug: "EdinburghLeisure",
+    apiOrigin: "https://clubspark.net",
+    venueId: "fe88d453-bf0f-44b7-82a5-d9cbb05353b1",
+    defaultRole: "guest",
+  },
+  craigmillar: {
+    key: "craigmillar",
+    label: "Craigmillar Park",
+    base: "https://www.craigmillarparktennis.co.uk",
+    apiSlug: "www_craigmillarparktennis_co_uk",
+    apiOrigin: "https://www.craigmillarparktennis.co.uk",
+    venueId: "f30b1200-9806-4aa0-812a-8698b2ea079a",
+    defaultRole: "member",
+  },
+};
 
 export interface RawSession {
   ID: string;
@@ -21,25 +51,20 @@ export interface RawSession {
   SubCategory: number;
   Name: string;
   Colour?: string;
-  StartTime: number; // minutes from midnight
+  StartTime: number;
   EndTime: number;
   Interval: number;
   Capacity: number;
   Cost?: number;
   CostFrom?: number;
-  CourtCost?: number;
 }
-
 export interface RawResource {
   ID: string;
   ResourceGroupID: string;
   Name: string;
   Number: number;
-  Lighting: number;
-  Surface: number;
   Days: { Date: string; Sessions: RawSession[] }[];
 }
-
 export interface VenueSessionsResponse {
   TimeZone: string;
   EarliestStartTime: number;
@@ -49,9 +74,34 @@ export interface VenueSessionsResponse {
   Resources: RawResource[];
 }
 
-const VENUE_ID = "fe88d453-bf0f-44b7-82a5-d9cbb05353b1"; // Meadows Tennis (from GetSettings)
+export async function fetchVenueSessions(v: VenueConfig, date: string): Promise<VenueSessionsResponse> {
+  const url = `${v.apiOrigin}/v0/VenueBooking/${v.apiSlug}/GetVenueSessions?resourceID=&startDate=${date}&endDate=${date}&roleId=&_=${Date.now()}`;
+  const res = await fetch(url, {
+    headers: { Accept: "application/json, text/plain, */*", "User-Agent": "clubspark-mobile/0.2" },
+    next: { revalidate: 60 },
+  });
+  if (!res.ok) throw new Error(`ClubSpark ${res.status}`);
+  return res.json();
+}
 
-function bookUrl(p: {
+export interface Slot {
+  courtId: string;
+  courtName: string;
+  courtNumber: number;
+  start: number;
+  end: number;
+  durationMin: number;
+  pricePerHour: number;
+  available: boolean;
+  reasonIfTaken?: string;
+  deepLink: string;
+}
+
+export function listingUrl(v: VenueConfig, date: string): string {
+  return `${v.base}/Booking/BookByDate#?date=${date}&role=${v.defaultRole}`;
+}
+
+function bookUrl(v: VenueConfig, p: {
   resourceId: string;
   resourceGroupId: string;
   sessionId: string;
@@ -69,66 +119,29 @@ function bookUrl(p: {
     EndTime: String(p.endTime),
     Category: String(p.category),
     SubCategory: String(p.subCategory),
-    VenueID: VENUE_ID,
+    VenueID: v.venueId,
     ResourceGroupID: p.resourceGroupId,
   });
-  return `https://clubspark.net/${VENUE}/Booking/Book?${q.toString()}`;
+  return `${v.base}/Booking/Book?${q.toString()}`;
 }
 
-export async function fetchVenueSessions(date: string): Promise<VenueSessionsResponse> {
-  const url = `${BASE}/GetVenueSessions?resourceID=&startDate=${date}&endDate=${date}&roleId=&_=${Date.now()}`;
-  const res = await fetch(url, {
-    headers: {
-      Accept: "application/json, text/plain, */*",
-      "User-Agent": "clubspark-mobile/0.1 (+https://github.com/)",
-    },
-    next: { revalidate: 60 },
-  });
-  if (!res.ok) throw new Error(`ClubSpark ${res.status}`);
-  return res.json();
-}
-
-export interface Slot {
-  courtId: string;
-  courtName: string;
-  courtNumber: number;
-  start: number; // minutes
-  end: number;
-  durationMin: number;
-  pricePerHour: number;
-  available: boolean;
-  reasonIfTaken?: string;
-  deepLink: string;
-}
-
-export function deepLinkFor(date: string): string {
-  return `https://clubspark.net/${VENUE}/Booking/BookByDate#?date=${date}&role=guest`;
-}
-
-// For each duration (in minutes), enumerate every (court, startTime) where
-// a contiguous block of `duration` fits inside one open Session and
-// doesn't overlap any non-open session. Step by 60 minutes (ClubSpark's
-// MinimumInterval for this venue).
 export function flattenSlots(
+  v: VenueConfig,
   data: VenueSessionsResponse,
   date: string,
   duration: number,
 ): Slot[] {
-  const STEP = 60;
+  const STEP = data.MinimumInterval || 60;
   const slots: Slot[] = [];
   for (const resource of data.Resources) {
     const day = resource.Days[0];
     if (!day) continue;
-
     const opens = day.Sessions.filter((s) => s.Category === 0);
     const blocks = day.Sessions.filter((s) => s.Category !== 0);
-
     for (const open of opens) {
-      const totalCost = open.Cost ?? open.CostFrom ?? 0; // £/hour for this band
+      const pricePerHour = open.Cost ?? open.CostFrom ?? 0;
       for (let t = open.StartTime; t + duration <= open.EndTime; t += STEP) {
-        const conflict = blocks.find(
-          (b) => t < b.EndTime && t + duration > b.StartTime,
-        );
+        const conflict = blocks.find((b) => t < b.EndTime && t + duration > b.StartTime);
         const available = !conflict;
         slots.push({
           courtId: resource.ID,
@@ -137,11 +150,11 @@ export function flattenSlots(
           start: t,
           end: t + duration,
           durationMin: duration,
-          pricePerHour: totalCost,
+          pricePerHour,
           available,
           reasonIfTaken: conflict?.Name,
           deepLink: available
-            ? bookUrl({
+            ? bookUrl(v, {
                 resourceId: resource.ID,
                 resourceGroupId: resource.ResourceGroupID,
                 sessionId: open.ID,
@@ -151,7 +164,7 @@ export function flattenSlots(
                 category: open.Category,
                 subCategory: open.SubCategory,
               })
-            : deepLinkFor(date),
+            : listingUrl(v, date),
         });
       }
     }
@@ -160,8 +173,7 @@ export function flattenSlots(
   return slots;
 }
 
-export function fmtTime(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
+export function fmtTime(min: number) {
+  const h = Math.floor(min / 60), m = min % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
