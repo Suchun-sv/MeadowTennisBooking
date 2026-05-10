@@ -75,6 +75,7 @@ export default function Page() {
   const [activeStart, setActiveStart] = useState<number | null>(null);
   const [sheetDuration, setSheetDuration] = useState(60);
   const [byDuration, setByDuration] = useState<Record<number, ApiResponse>>({});
+  const [pendingLink, setPendingLink] = useState<string | null>(null);
 
   // Constrained by the role's Min/MaxBookingIntervals from ClubSpark.
   const sheetDurations = useMemo(() => {
@@ -247,18 +248,16 @@ export default function Page() {
                   );
                 }
                 return (
-                  <a
+                  <button
                     key={s.courtId}
-                    href={s.deepLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={`block rounded-xl py-2.5 text-center border ${c.freeBg} ${c.freeBorder} ${c.freeText} active:scale-95`}
+                    onClick={() => setPendingLink(s.deepLink)}
+                    className={`block w-full rounded-xl py-2.5 text-center border ${c.freeBg} ${c.freeBorder} ${c.freeText} active:scale-95`}
                   >
                     <div className="text-sm font-semibold">{titleLabel}</div>
                     <div className="text-[11px] tabular-nums">
                       £{s.priceTotal % 1 === 0 ? s.priceTotal : s.priceTotal.toFixed(2)}
                     </div>
-                  </a>
+                  </button>
                 );
               })}
             </div>
@@ -302,6 +301,56 @@ export default function Page() {
           >ClubSpark ↗</a>
         </div>
       </footer>
+
+      {pendingLink && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4" onClick={() => setPendingLink(null)}>
+          <div className="absolute inset-0 bg-black/70" />
+          <div
+            className="relative w-full max-w-sm bg-card border border-line rounded-2xl p-5 text-sm space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 text-warn font-semibold text-base">
+              <span>⚠️</span>
+              <span>Beta — please double-check / 测试中，请仔细确认</span>
+            </div>
+            <div className="space-y-2 text-muted leading-relaxed">
+              <p>
+                This is an unofficial mobile interface to ClubSpark. Slot data
+                and price shown here may be out of date or wrong. Always
+                verify the court, time and total on the ClubSpark page
+                <span className="text-white"> before</span> you pay.
+              </p>
+              <p>
+                这是一个非官方的 ClubSpark 移动端浏览器，时段和价格可能不准。
+                <span className="text-white">付款前请务必</span>在 ClubSpark
+                页面再确认一次场地、时间和总价。
+              </p>
+              <p>
+                Bug or feedback? Please open an issue:{" "}
+                <a
+                  href="https://github.com/Suchun-sv/MeadowTennisBooking/issues"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent underline"
+                >github.com/Suchun-sv/MeadowTennisBooking/issues</a>
+              </p>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setPendingLink(null)}
+                className="flex-1 h-10 rounded-xl border border-line text-muted active:scale-95"
+              >Cancel / 取消</button>
+              <a
+                href={pendingLink}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => setPendingLink(null)}
+                className="flex-1 h-10 rounded-xl bg-accent text-black font-semibold flex items-center justify-center active:scale-95"
+              >Continue / 继续 →</a>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
