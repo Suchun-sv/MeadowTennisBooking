@@ -6,6 +6,8 @@ interface Slot {
   courtId: string;
   courtName: string;
   courtNumber: number;
+  kind: "tennis" | "ballMachine";
+  displayLabel: string;
   start: number;
   end: number;
   durationMin: number;
@@ -96,15 +98,15 @@ export default function Page() {
 
   // Matrix is always 1h.
   const { times, courts, cell } = useMemo(() => {
-    if (!data) return { times: [] as number[], courts: [] as { id: string; name: string; n: number }[], cell: new Map<string, Slot>() };
+    if (!data) return { times: [] as number[], courts: [] as { id: string; name: string; n: number; label: string; kind: "tennis" | "ballMachine" }[], cell: new Map<string, Slot>() };
     const cutoff = isToday ? nowMinutes() : -1;
     const tSet = new Set<number>();
-    const cMap = new Map<string, { id: string; name: string; n: number }>();
+    const cMap = new Map<string, { id: string; name: string; n: number; label: string; kind: "tennis" | "ballMachine" }>();
     const cell = new Map<string, Slot>();
     for (const s of data.slots) {
       if (s.start < cutoff) continue;
       tSet.add(s.start);
-      cMap.set(s.courtId, { id: s.courtId, name: s.courtName, n: s.courtNumber });
+      cMap.set(s.courtId, { id: s.courtId, name: s.courtName, n: s.courtNumber, label: s.displayLabel, kind: s.kind });
       cell.set(`${s.start}|${s.courtId}`, s);
     }
     const times = [...tSet].sort((a, b) => a - b);
@@ -118,7 +120,11 @@ export default function Page() {
     if (activeStart == null || !sheetData) return null;
     return courts.map((c) => {
       const s = sheetData.slots.find((x) => x.start === activeStart && x.courtId === c.id);
-      return s ?? { courtId: c.id, courtName: c.name, courtNumber: c.n, start: activeStart, end: activeStart + sheetDuration, durationMin: sheetDuration, pricePerHour: 0, available: false, deepLink: "" } as Slot;
+      return s ?? {
+        courtId: c.id, courtName: c.name, courtNumber: c.n, kind: c.kind, displayLabel: c.label,
+        start: activeStart, end: activeStart + sheetDuration, durationMin: sheetDuration,
+        pricePerHour: 0, available: false, deepLink: "",
+      } as Slot;
     });
   }, [activeStart, sheetData, sheetDuration, courts]);
 
@@ -194,25 +200,31 @@ export default function Page() {
             <div className="px-4 py-6 text-muted text-sm">Loading…</div>
           ) : (
             <div className="px-3 pb-4 grid grid-cols-4 gap-2">
-              {activeRow.map((s) => (
-                <a
-                  key={s.courtId}
-                  href={s.available ? s.deepLink : undefined}
-                  target="_blank"
-                  rel="noreferrer"
-                  title={s.reasonIfTaken}
-                  className={`block rounded-xl py-2.5 text-center border ${
-                    s.available
-                      ? "bg-accent/15 border-accent/50 text-accent active:scale-95 active:bg-accent/25"
-                      : "bg-line/20 border-line text-muted/50"
-                  }`}
-                >
-                  <div className="text-sm font-semibold">{s.courtName.replace("Court ", "C")}</div>
-                  <div className="text-[11px] tabular-nums">
-                    {s.available ? `£${Math.round((s.pricePerHour * sheetDuration) / 60)}` : "—"}
-                  </div>
-                </a>
-              ))}
+              {activeRow.map((s) => {
+                const isMachine = s.kind === "ballMachine";
+                const cls = !s.available
+                  ? "bg-line/20 border-line text-muted/50"
+                  : isMachine
+                  ? "bg-warn/15 border-warn/50 text-warn active:scale-95 active:bg-warn/25"
+                  : "bg-accent/15 border-accent/50 text-accent active:scale-95 active:bg-accent/25";
+                return (
+                  <a
+                    key={s.courtId}
+                    href={s.available ? s.deepLink : undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={s.reasonIfTaken}
+                    className={`block rounded-xl py-2.5 text-center border ${cls}`}
+                  >
+                    <div className="text-sm font-semibold">
+                      {isMachine ? "Machine" : `C${s.displayLabel}`}
+                    </div>
+                    <div className="text-[11px] tabular-nums">
+                      {s.available ? `£${Math.round((s.pricePerHour * sheetDuration) / 60)}` : "—"}
+                    </div>
+                  </a>
+                );
+              })}
             </div>
           )}
           <div className="px-4 pb-3 text-[11px] text-muted">
@@ -248,7 +260,7 @@ function Matrix({
   onRowTap,
 }: {
   times: number[];
-  courts: { id: string; name: string; n: number }[];
+  courts: { id: string; name: string; n: number; label: string; kind: "tennis" | "ballMachine" }[];
   cell: Map<string, Slot>;
   onRowTap: (t: number) => void;
 }) {
@@ -263,7 +275,7 @@ function Matrix({
         <div className="grid bg-card border-b border-line text-[11px] text-muted font-medium" style={{ gridTemplateColumns: cols }}>
           <div className="py-2 text-center text-[10px] uppercase tracking-wider">time</div>
           {courts.map((c) => (
-            <div key={c.id} className="py-2 text-center tabular-nums">{c.n + 1}</div>
+            <div key={c.id} className={`py-2 text-center tabular-nums ${c.kind === "ballMachine" ? "text-warn font-semibold" : ""}`}>{c.label}</div>
           ))}
         </div>
         {/* rows */}
@@ -280,20 +292,24 @@ function Matrix({
               <div className="py-1.5 text-center text-[11px] text-muted tabular-nums border-r border-line/60 flex items-center justify-center">
                 {fmt(t)}
               </div>
-              {rowSlots.map((s, i) => (
-                <div key={i} className="p-0.5">
-                  <div
-                    title={s?.reasonIfTaken}
-                    className={`w-full aspect-square rounded ${
-                      !s
-                        ? "bg-transparent"
-                        : s.available
-                        ? "bg-accent/70"
-                        : "bg-line/60"
-                    }`}
-                  />
-                </div>
-              ))}
+              {rowSlots.map((s, i) => {
+                const isMachine = s?.kind === "ballMachine";
+                const cls = !s
+                  ? "bg-transparent"
+                  : s.available
+                  ? isMachine
+                    ? "bg-warn/70"
+                    : "bg-accent/70"
+                  : "bg-line/60";
+                return (
+                  <div key={i} className="p-0.5">
+                    <div
+                      title={s?.reasonIfTaken}
+                      className={`w-full aspect-square rounded ${cls}`}
+                    />
+                  </div>
+                );
+              })}
             </button>
           );
         })}

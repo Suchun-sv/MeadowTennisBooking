@@ -63,7 +63,18 @@ export interface RawResource {
   ResourceGroupID: string;
   Name: string;
   Number: number;
+  Category?: number; // 1=Tennis, 5=Ball machine, 13=Padel, 14=Pickleball, ...
   Days: { Date: string; Sessions: RawSession[] }[];
+}
+
+// Resource categories we want to surface, with display kind.
+const PADEL = 13;
+const BALL_MACHINE = 5;
+type Kind = "tennis" | "ballMachine";
+function kindOf(cat: number | undefined): Kind | null {
+  if (cat === BALL_MACHINE) return "ballMachine";
+  if (cat === PADEL) return null; // hide
+  return "tennis"; // default — tennis courts and any other normal court
 }
 export interface VenueSessionsResponse {
   TimeZone: string;
@@ -87,7 +98,9 @@ export async function fetchVenueSessions(v: VenueConfig, date: string): Promise<
 export interface Slot {
   courtId: string;
   courtName: string;
-  courtNumber: number;
+  courtNumber: number; // renumbered, 0-based, only across surfaced resources
+  kind: "tennis" | "ballMachine";
+  displayLabel: string; // "1", "2"... for tennis; "M" for ball machine
   start: number;
   end: number;
   durationMin: number;
@@ -133,7 +146,27 @@ export function flattenSlots(
 ): Slot[] {
   const STEP = data.MinimumInterval || 60;
   const slots: Slot[] = [];
-  for (const resource of data.Resources) {
+
+  // Filter + renumber: drop hidden categories (e.g. Padel), keep original
+  // order, count tennis courts from 1, mark ball machine as "M".
+  const surfaced = data.Resources
+    .map((r) => ({ r, kind: kindOf(r.Category) }))
+    .filter((x): x is { r: RawResource; kind: Kind } => x.kind !== null);
+  let tennisN = 0;
+  const meta = new Map<string, { kind: Kind; idx: number; label: string }>();
+  surfaced.forEach(({ r, kind }, idx) => {
+    let label: string;
+    if (kind === "tennis") {
+      tennisN += 1;
+      label = String(tennisN);
+    } else {
+      label = "M"; // ball machine
+    }
+    meta.set(r.ID, { kind, idx, label });
+  });
+
+  for (const { r: resource } of surfaced) {
+    const m = meta.get(resource.ID)!;
     const day = resource.Days[0];
     if (!day) continue;
     const opens = day.Sessions.filter((s) => s.Category === 0);
@@ -146,7 +179,9 @@ export function flattenSlots(
         slots.push({
           courtId: resource.ID,
           courtName: resource.Name,
-          courtNumber: resource.Number,
+          courtNumber: m.idx,
+          kind: m.kind,
+          displayLabel: m.label,
           start: t,
           end: t + duration,
           durationMin: duration,
