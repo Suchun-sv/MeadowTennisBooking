@@ -256,10 +256,27 @@ export default function Page() {
       )}
 
       <footer className="fixed bottom-0 inset-x-0 bg-bg/95 backdrop-blur border-t border-line">
-        <div className="mx-auto max-w-md flex items-center justify-between px-4 py-2 text-xs text-muted">
-          <span className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded bg-accent/30 border border-accent/50" /> free</span>
-          <span className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded bg-line/40 border border-line" /> taken</span>
+        <div className="mx-auto max-w-md flex items-center gap-3 overflow-x-auto whitespace-nowrap px-4 py-2 text-[11px] text-muted">
+          {(() => {
+            const present = new Set(courts.map((c) => c.kind));
+            const items: { k: Kind; label: string }[] = [
+              { k: "outdoor", label: "Outdoor" },
+              { k: "grass", label: "Grass" },
+              { k: "indoor", label: "Indoor" },
+              { k: "ballMachine", label: "Machine" },
+            ];
+            return items.filter((x) => present.has(x.k)).map((x) => (
+              <span key={x.k} className="flex items-center gap-1.5">
+                <i className={`inline-block h-3 w-3 rounded ${KIND_COLOURS[x.k].cell}`} />
+                {x.label}
+              </span>
+            ));
+          })()}
+          <span className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded bg-line/60" /> taken</span>
           <a
+            className="ml-auto text-accent font-semibold"
+            target="_blank"
+            rel="noreferrer"
             href={(() => {
               const map: Record<VenueKey, string> = {
                 meadows: `https://clubspark.net/EdinburghLeisure/Booking/BookByDate#?date=${date}&role=guest`,
@@ -268,9 +285,6 @@ export default function Page() {
               };
               return map[venue];
             })()}
-            target="_blank"
-            rel="noreferrer"
-            className="text-accent font-semibold"
           >ClubSpark ↗</a>
         </div>
       </footer>
