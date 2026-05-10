@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
       bookingInterval: interval,
       minDurationMinutes: minDuration,
       maxDurationMinutes: maxDuration,
+      memberOnlyDurations: venue.memberOnlyDurations ?? [],
       slots,
     });
   } catch (e: unknown) {

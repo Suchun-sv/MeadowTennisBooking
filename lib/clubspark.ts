@@ -12,16 +12,15 @@ export type VenueKey = "meadows" | "craigmillar" | "grange";
 interface VenueConfig {
   key: VenueKey;
   label: string;
-  // Base URL incl. subdirectory if any (no trailing slash).
-  // Booking deep link uses `${base}/Booking/Book?...` and the role/date listing
-  // uses `${base}/Booking/BookByDate#?date=...&role=guest`.
   base: string;
-  // Slug used in /v0/VenueBooking/{slug}/...
   apiSlug: string;
-  // Origin for the API call. Usually same as base origin.
   apiOrigin: string;
   venueId: string;
   defaultRole: "guest" | "member";
+  // Extra durations (in minutes) only allowed for members. Public
+  // GetSettings only exposes the Guest role, so member-only options have
+  // to be configured here. Surfaced in UI with a distinct colour.
+  memberOnlyDurations?: number[];
 }
 
 export const VENUES: Record<VenueKey, VenueConfig> = {
@@ -51,6 +50,7 @@ export const VENUES: Record<VenueKey, VenueConfig> = {
     apiOrigin: "https://clubspark.lta.org.uk",
     venueId: "93cdcb51-6c6d-4ab5-9788-41a5045ab20c",
     defaultRole: "guest",
+    memberOnlyDurations: [90], // members can do 1.5h, guests cannot
   },
 };
 

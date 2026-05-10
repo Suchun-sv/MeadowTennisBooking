@@ -33,6 +33,7 @@ interface ApiResponse {
   bookingInterval: number;
   minDurationMinutes: number;
   maxDurationMinutes: number;
+  memberOnlyDurations: number[];
   slots: Slot[];
 }
 
@@ -75,16 +76,23 @@ export default function Page() {
   const [activeStart, setActiveStart] = useState<number | null>(null);
   const [sheetDuration, setSheetDuration] = useState(60);
   const [byDuration, setByDuration] = useState<Record<number, ApiResponse>>({});
-  const [pendingLink, setPendingLink] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ link: string; memberOnly: boolean } | null>(null);
 
-  // Constrained by the role's Min/MaxBookingIntervals from ClubSpark.
+  // Guest-allowed durations + any member-only durations the venue config
+  // surfaces (rendered in gold; require the user to confirm they're a
+  // member before the deep-link is opened).
   const sheetDurations = useMemo(() => {
     if (!data) return [60];
     const step = data.bookingInterval;
-    const out: number[] = [];
-    for (let d = data.minDurationMinutes; d <= data.maxDurationMinutes; d += step) out.push(d);
-    return out;
+    const set = new Set<number>();
+    for (let d = data.minDurationMinutes; d <= data.maxDurationMinutes; d += step) set.add(d);
+    for (const d of data.memberOnlyDurations) set.add(d);
+    return [...set].sort((a, b) => a - b);
   }, [data]);
+  const memberOnlySet = useMemo(
+    () => new Set(data?.memberOnlyDurations ?? []),
+    [data?.memberOnlyDurations],
+  );
 
   // Matrix fetch (atomic = MinimumInterval).
   useEffect(() => {
@@ -209,17 +217,26 @@ export default function Page() {
               </div>
             </div>
             <div className="flex items-center bg-bg rounded-full border border-line p-0.5 flex-wrap">
-              {sheetDurations.map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setSheetDuration(d)}
-                  className={`px-2.5 h-8 rounded-full text-sm transition ${
-                    sheetDuration === d ? "bg-accent text-black font-semibold" : "text-muted"
-                  }`}
-                >
-                  {d % 60 === 0 ? `${d / 60}h` : `${d}m`}
-                </button>
-              ))}
+              {sheetDurations.map((d) => {
+                const memberOnly = memberOnlySet.has(d);
+                const selected = sheetDuration === d;
+                let cls: string;
+                if (selected && memberOnly) cls = "bg-amber-400 text-black font-semibold";
+                else if (selected) cls = "bg-accent text-black font-semibold";
+                else if (memberOnly) cls = "text-amber-300";
+                else cls = "text-muted";
+                return (
+                  <button
+                    key={d}
+                    onClick={() => setSheetDuration(d)}
+                    className={`px-2.5 h-8 rounded-full text-sm transition ${cls}`}
+                    title={memberOnly ? "Members only" : undefined}
+                  >
+                    {d % 60 === 0 ? `${d / 60}h` : d === 90 ? "1.5h" : `${d}m`}
+                    {memberOnly && <span className="ml-0.5 text-[9px] align-top">★</span>}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -250,7 +267,7 @@ export default function Page() {
                 return (
                   <button
                     key={s.courtId}
-                    onClick={() => setPendingLink(s.deepLink)}
+                    onClick={() => setPending({ link: s.deepLink, memberOnly: memberOnlySet.has(sheetDuration) })}
                     className={`block w-full rounded-xl py-2.5 text-center border ${c.freeBg} ${c.freeBorder} ${c.freeText} active:scale-95`}
                   >
                     <div className="text-sm font-semibold">{titleLabel}</div>
@@ -302,8 +319,8 @@ export default function Page() {
         </div>
       </footer>
 
-      {pendingLink && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4" onClick={() => setPendingLink(null)}>
+      {pending && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4" onClick={() => setPending(null)}>
           <div className="absolute inset-0 bg-black/70" />
           <div
             className="relative w-full max-w-sm bg-card border border-line rounded-2xl p-5 text-sm space-y-4"
@@ -313,6 +330,18 @@ export default function Page() {
               <span>⚠️</span>
               <span>Beta — please double-check / 测试中，请仔细确认</span>
             </div>
+            {pending.memberOnly && (
+              <div className="rounded-xl border border-amber-400/50 bg-amber-400/10 p-3 text-amber-200 text-[13px] space-y-1">
+                <div className="font-semibold">Members only ★ / 仅限会员</div>
+                <p>
+                  This duration can only be booked by members. Please make
+                  sure you are a member of this venue before continuing.
+                </p>
+                <p>
+                  这个时长只有会员才能预订。继续前请确认你自己是会员，否则无法完成预定。
+                </p>
+              </div>
+            )}
             <div className="space-y-2 text-muted leading-relaxed">
               <p>
                 This is an unofficial mobile interface to ClubSpark. Slot data
@@ -324,6 +353,11 @@ export default function Page() {
                 这是一个非官方的 ClubSpark 移动端浏览器，时段和价格可能不准。
                 <span className="text-white">付款前请务必</span>在 ClubSpark
                 页面再确认一次场地、时间和总价。
+              </p>
+              <p className="text-[12px] text-muted/80 italic">
+                Prices shown are guest rates and for reference only — your
+                actual price depends on your membership status.<br />
+                所显示价格按访客费率计算，仅供参考；实际价格以你的会员身份为准。
               </p>
               <p>
                 Bug or feedback? Please open an issue:{" "}
@@ -337,15 +371,17 @@ export default function Page() {
             </div>
             <div className="flex gap-2 pt-1">
               <button
-                onClick={() => setPendingLink(null)}
+                onClick={() => setPending(null)}
                 className="flex-1 h-10 rounded-xl border border-line text-muted active:scale-95"
               >Cancel / 取消</button>
               <a
-                href={pendingLink}
+                href={pending.link}
                 target="_blank"
                 rel="noreferrer"
-                onClick={() => setPendingLink(null)}
-                className="flex-1 h-10 rounded-xl bg-accent text-black font-semibold flex items-center justify-center active:scale-95"
+                onClick={() => setPending(null)}
+                className={`flex-1 h-10 rounded-xl font-semibold flex items-center justify-center active:scale-95 ${
+                  pending.memberOnly ? "bg-amber-400 text-black" : "bg-accent text-black"
+                }`}
               >Continue / 继续 →</a>
             </div>
           </div>
