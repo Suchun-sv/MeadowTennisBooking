@@ -122,13 +122,16 @@ export async function fetchVenueSessions(v: VenueConfig, date: string): Promise<
 export interface Slot {
   courtId: string;
   courtName: string;
-  courtNumber: number; // renumbered, 0-based, only across surfaced resources
+  courtNumber: number;
   kind: Kind;
-  displayLabel: string; // "1", "2"... for tennis; "M" for ball machine
+  displayLabel: string;
   start: number;
   end: number;
   durationMin: number;
-  pricePerHour: number;
+  // Total cost for this exact (start, duration) on this court, in the
+  // venue's currency. Already multiplied through; UI does not need to
+  // know the per-interval rate.
+  priceTotal: number;
   available: boolean;
   reasonIfTaken?: string;
   deepLink: string;
@@ -187,7 +190,12 @@ export function flattenSlots(
     const opens = day.Sessions.filter((s) => s.Category === 0);
     const blocks = day.Sessions.filter((s) => s.Category !== 0);
     for (const open of opens) {
-      const pricePerHour = open.Cost ?? open.CostFrom ?? 0;
+      // ClubSpark Cost is per-`Interval`. A booking covering `duration`
+      // minutes spans (duration / Interval) intervals at this rate.
+      const interval = open.Interval || data.MinimumInterval || 60;
+      const costPerInterval = open.Cost ?? open.CostFrom ?? 0;
+      const intervalsInSlot = Math.max(1, Math.round(duration / interval));
+      const priceTotal = +(costPerInterval * intervalsInSlot).toFixed(2);
       for (let t = open.StartTime; t + duration <= open.EndTime; t += STEP) {
         const conflict = blocks.find((b) => t < b.EndTime && t + duration > b.StartTime);
         const available = !conflict;
@@ -200,7 +208,7 @@ export function flattenSlots(
           start: t,
           end: t + duration,
           durationMin: duration,
-          pricePerHour,
+          priceTotal,
           available,
           reasonIfTaken: conflict?.Name,
           deepLink: available

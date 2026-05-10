@@ -20,7 +20,7 @@ interface Slot {
   start: number;
   end: number;
   durationMin: number;
-  pricePerHour: number;
+  priceTotal: number;
   available: boolean;
   reasonIfTaken?: string;
   deepLink: string;
@@ -144,7 +144,7 @@ export default function Page() {
       return s ?? {
         courtId: c.id, courtName: c.name, courtNumber: c.n, kind: c.kind, displayLabel: c.label,
         start: activeStart, end: activeStart + sheetDuration, durationMin: sheetDuration,
-        pricePerHour: 0, available: false, deepLink: "",
+        priceTotal: 0, available: false, deepLink: "",
       } as Slot;
     });
   }, [activeStart, sheetData, sheetDuration, courts]);
@@ -242,7 +242,7 @@ export default function Page() {
                   >
                     <div className="text-sm font-semibold">{titleLabel}</div>
                     <div className="text-[11px] tabular-nums">
-                      {s.available ? `£${Math.round((s.pricePerHour * sheetDuration) / 60)}` : "—"}
+                      {s.available ? `£${s.priceTotal % 1 === 0 ? s.priceTotal : s.priceTotal.toFixed(2)}` : "—"}
                     </div>
                   </a>
                 );
