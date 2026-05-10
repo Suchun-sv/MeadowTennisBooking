@@ -7,7 +7,7 @@
 //   GET {host}/{venuePathPrefix}Booking/Book?ResourceID=&Date=&SessionID=
 //        &StartTime=&EndTime=&Category=&SubCategory=&VenueID=&ResourceGroupID=
 
-export type VenueKey = "meadows" | "craigmillar";
+export type VenueKey = "meadows" | "craigmillar" | "grange";
 
 interface VenueConfig {
   key: VenueKey;
@@ -27,7 +27,7 @@ interface VenueConfig {
 export const VENUES: Record<VenueKey, VenueConfig> = {
   meadows: {
     key: "meadows",
-    label: "Meadows Tennis",
+    label: "Meadows",
     base: "https://clubspark.net/EdinburghLeisure",
     apiSlug: "EdinburghLeisure",
     apiOrigin: "https://clubspark.net",
@@ -36,12 +36,21 @@ export const VENUES: Record<VenueKey, VenueConfig> = {
   },
   craigmillar: {
     key: "craigmillar",
-    label: "Craigmillar Park",
+    label: "Craigmillar",
     base: "https://www.craigmillarparktennis.co.uk",
     apiSlug: "www_craigmillarparktennis_co_uk",
     apiOrigin: "https://www.craigmillarparktennis.co.uk",
     venueId: "f30b1200-9806-4aa0-812a-8698b2ea079a",
     defaultRole: "member",
+  },
+  grange: {
+    key: "grange",
+    label: "Grange",
+    base: "https://clubspark.lta.org.uk/GrangeDyvoursLTC",
+    apiSlug: "GrangeDyvoursLTC",
+    apiOrigin: "https://clubspark.lta.org.uk",
+    venueId: "93cdcb51-6c6d-4ab5-9788-41a5045ab20c",
+    defaultRole: "guest",
   },
 };
 
@@ -74,7 +83,23 @@ type Kind = "tennis" | "ballMachine";
 function kindOf(cat: number | undefined): Kind | null {
   if (cat === BALL_MACHINE) return "ballMachine";
   if (cat === PADEL) return null; // hide
-  return "tennis"; // default — tennis courts and any other normal court
+  return "tennis";
+}
+
+// Short, mobile-friendly label parsed from the Resource Name.
+// Examples:
+//   "Court 1"               -> "1"
+//   "Tennis Court 7"        -> "7"
+//   "Grass Court 2"         -> "G2"
+//   "Indoor Tennis 9"       -> "I9"
+//   "Tennis Ball Machine …" -> "M"
+function shortLabel(name: string, kind: Kind, fallback: number): string {
+  if (kind === "ballMachine") return "M";
+  const m = name.match(/(\d+)/);
+  const num = m ? m[1] : String(fallback);
+  if (/grass/i.test(name)) return `G${num}`;
+  if (/indoor/i.test(name)) return `I${num}`;
+  return num;
 }
 export interface VenueSessionsResponse {
   TimeZone: string;
@@ -147,22 +172,13 @@ export function flattenSlots(
   const STEP = data.MinimumInterval || 60;
   const slots: Slot[] = [];
 
-  // Filter + renumber: drop hidden categories (e.g. Padel), keep original
-  // order, count tennis courts from 1, mark ball machine as "M".
+  // Filter out hidden categories (e.g. Padel); derive short label from name.
   const surfaced = data.Resources
     .map((r) => ({ r, kind: kindOf(r.Category) }))
     .filter((x): x is { r: RawResource; kind: Kind } => x.kind !== null);
-  let tennisN = 0;
   const meta = new Map<string, { kind: Kind; idx: number; label: string }>();
   surfaced.forEach(({ r, kind }, idx) => {
-    let label: string;
-    if (kind === "tennis") {
-      tennisN += 1;
-      label = String(tennisN);
-    } else {
-      label = "M"; // ball machine
-    }
-    meta.set(r.ID, { kind, idx, label });
+    meta.set(r.ID, { kind, idx, label: shortLabel(r.Name, kind, idx + 1) });
   });
 
   for (const { r: resource } of surfaced) {

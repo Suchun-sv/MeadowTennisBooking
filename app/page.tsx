@@ -27,6 +27,7 @@ interface ApiResponse {
 const VENUES = [
   { key: "meadows", label: "Meadows" },
   { key: "craigmillar", label: "Craigmillar" },
+  { key: "grange", label: "Grange" },
 ] as const;
 type VenueKey = (typeof VENUES)[number]["key"];
 
@@ -249,11 +250,14 @@ export default function Page() {
           <span className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded bg-accent/30 border border-accent/50" /> free</span>
           <span className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded bg-line/40 border border-line" /> taken</span>
           <a
-            href={
-              venue === "meadows"
-                ? `https://clubspark.net/EdinburghLeisure/Booking/BookByDate#?date=${date}&role=guest`
-                : `https://www.craigmillarparktennis.co.uk/Booking/BookByDate#?date=${date}&role=member`
-            }
+            href={(() => {
+              const map: Record<VenueKey, string> = {
+                meadows: `https://clubspark.net/EdinburghLeisure/Booking/BookByDate#?date=${date}&role=guest`,
+                craigmillar: `https://www.craigmillarparktennis.co.uk/Booking/BookByDate#?date=${date}&role=member`,
+                grange: `https://clubspark.lta.org.uk/GrangeDyvoursLTC/Booking/BookByDate#?date=${date}&role=guest`,
+              };
+              return map[venue];
+            })()}
             target="_blank"
             rel="noreferrer"
             className="text-accent font-semibold"
