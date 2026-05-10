@@ -223,26 +223,35 @@ export default function Page() {
             <div className="px-3 pb-4 grid grid-cols-4 gap-2">
               {activeRow.map((s) => {
                 const c = KIND_COLOURS[s.kind];
-                const cls = s.available
-                  ? `${c.freeBg} ${c.freeBorder} ${c.freeText} active:scale-95`
-                  : "bg-line/20 border-line text-muted/50";
                 const titleLabel =
                   s.kind === "ballMachine" ? "Machine" :
                   s.kind === "grass" ? `Grass ${s.displayLabel.replace(/^G/, "")}` :
                   s.kind === "indoor" ? `Indoor ${s.displayLabel.replace(/^I/, "")}` :
                   `Court ${s.displayLabel}`;
+                if (!s.available) {
+                  return (
+                    <div
+                      key={s.courtId}
+                      title={s.reasonIfTaken || "Not available"}
+                      aria-disabled="true"
+                      className="block rounded-xl py-2.5 text-center border bg-line/20 border-line text-muted/50 cursor-not-allowed select-none"
+                    >
+                      <div className="text-sm font-semibold">{titleLabel}</div>
+                      <div className="text-[11px]">—</div>
+                    </div>
+                  );
+                }
                 return (
                   <a
                     key={s.courtId}
-                    href={s.available ? s.deepLink : undefined}
+                    href={s.deepLink}
                     target="_blank"
                     rel="noreferrer"
-                    title={s.reasonIfTaken}
-                    className={`block rounded-xl py-2.5 text-center border ${cls}`}
+                    className={`block rounded-xl py-2.5 text-center border ${c.freeBg} ${c.freeBorder} ${c.freeText} active:scale-95`}
                   >
                     <div className="text-sm font-semibold">{titleLabel}</div>
                     <div className="text-[11px] tabular-nums">
-                      {s.available ? `£${s.priceTotal % 1 === 0 ? s.priceTotal : s.priceTotal.toFixed(2)}` : "—"}
+                      £{s.priceTotal % 1 === 0 ? s.priceTotal : s.priceTotal.toFixed(2)}
                     </div>
                   </a>
                 );
@@ -321,11 +330,15 @@ function Matrix({
         {times.map((t) => {
           const rowSlots = courts.map((c) => cell.get(`${t}|${c.id}`));
           const freeCount = rowSlots.filter((s) => s?.available).length;
+          const anyFree = freeCount > 0;
           return (
             <button
               key={t}
-              onClick={() => onRowTap(t)}
-              className="grid w-full text-left border-b border-line/60 last:border-b-0 active:bg-line/30"
+              onClick={() => anyFree && onRowTap(t)}
+              disabled={!anyFree}
+              className={`grid w-full text-left border-b border-line/60 last:border-b-0 ${
+                anyFree ? "active:bg-line/30" : "opacity-60 cursor-not-allowed"
+              }`}
               style={{ gridTemplateColumns: cols }}
             >
               <div className="py-1.5 text-center text-[11px] text-muted tabular-nums border-r border-line/60 flex items-center justify-center">
