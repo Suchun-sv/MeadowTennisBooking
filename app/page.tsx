@@ -65,43 +65,56 @@ const nowMinutes = () => {
 export default function Page() {
   const [venue, setVenue] = useState<VenueKey>("meadows");
   const [date, setDate] = useState(todayISO());
-  // duration is shared by the matrix and the sheet so colours always match.
-  const [duration, setDuration] = useState(60);
+  // Matrix uses atomic (= MinimumInterval). Sheet has its own duration.
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [activeStart, setActiveStart] = useState<number | null>(null);
+  const [sheetDuration, setSheetDuration] = useState(60);
+  const [byDuration, setByDuration] = useState<Record<number, ApiResponse>>({});
 
-  // Available durations: multiples of the venue's MinimumInterval up to 3h.
-  const durations = useMemo(() => {
+  const sheetDurations = useMemo(() => {
     const min = data?.minimumInterval ?? 60;
     const out: number[] = [];
     for (let d = min; d <= 180; d += min) out.push(d);
     return out.length ? out : [60, 120, 180];
   }, [data?.minimumInterval]);
 
-  // If venue change makes current duration invalid, snap to MinimumInterval.
-  useEffect(() => {
-    if (data && !durations.includes(duration)) setDuration(data.minimumInterval);
-  }, [durations, duration, data]);
-
-  // Single fetch keyed on venue + date + duration. Matrix and sheet read
-  // from the same response.
+  // Matrix fetch (atomic = MinimumInterval).
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setErr(null);
-    fetch(`/api/slots?venue=${venue}&date=${date}&duration=${duration}`)
+    setByDuration({});
+    fetch(`/api/slots?venue=${venue}&date=${date}&duration=atomic`)
       .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
       .then(({ ok, j }) => {
         if (cancelled) return;
         if (!ok) setErr(j.error || "Failed to load");
-        else setData(j as ApiResponse);
+        else {
+          const resp = j as ApiResponse;
+          setData(resp);
+          setByDuration({ [resp.duration]: resp });
+        }
       })
       .catch((e) => !cancelled && setErr(String(e)))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [venue, date, duration]);
+  }, [venue, date]);
+
+  // Sheet fetch on demand for its chosen duration.
+  useEffect(() => {
+    if (activeStart == null) return;
+    if (byDuration[sheetDuration]) return;
+    let cancelled = false;
+    fetch(`/api/slots?venue=${venue}&date=${date}&duration=${sheetDuration}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (!cancelled) setByDuration((p) => ({ ...p, [sheetDuration]: j as ApiResponse }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeStart, sheetDuration, venue, date, byDuration]);
 
   const isToday = date === todayISO();
 
@@ -123,18 +136,18 @@ export default function Page() {
     return { times, courts, cell };
   }, [data, isToday]);
 
-  // Sheet shows slots at activeStart, using the same data as the matrix.
+  const sheetData = byDuration[sheetDuration];
   const activeRow = useMemo(() => {
-    if (activeStart == null || !data) return null;
+    if (activeStart == null || !sheetData) return null;
     return courts.map((c) => {
-      const s = data.slots.find((x) => x.start === activeStart && x.courtId === c.id);
+      const s = sheetData.slots.find((x) => x.start === activeStart && x.courtId === c.id);
       return s ?? {
         courtId: c.id, courtName: c.name, courtNumber: c.n, kind: c.kind, displayLabel: c.label,
-        start: activeStart, end: activeStart + duration, durationMin: duration,
+        start: activeStart, end: activeStart + sheetDuration, durationMin: sheetDuration,
         priceTotal: 0, available: false, deepLink: "",
       } as Slot;
     });
-  }, [activeStart, data, duration, courts]);
+  }, [activeStart, sheetData, sheetDuration, courts]);
 
   return (
     <main className="mx-auto max-w-md pb-24">
@@ -161,24 +174,9 @@ export default function Page() {
               className="bg-card border border-line rounded-lg px-2 py-1.5 text-sm"
             />
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-lg font-semibold">
-              {prettyDate(date)}
-              {isToday && <span className="text-accent text-xs ml-2">today</span>}
-            </div>
-            <div className="flex items-center bg-card rounded-full border border-line p-0.5">
-              {durations.map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setDuration(d)}
-                  className={`px-2.5 h-7 rounded-full text-xs transition ${
-                    duration === d ? "bg-accent text-black font-semibold" : "text-muted"
-                  }`}
-                >
-                  {d % 60 === 0 ? `${d / 60}h` : `${d}m`}
-                </button>
-              ))}
-            </div>
+          <div className="text-lg font-semibold">
+            {prettyDate(date)}
+            {isToday && <span className="text-accent text-xs ml-2">today</span>}
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setDate(addDays(date, -1))} className="h-9 w-9 rounded-full bg-card border border-line text-lg active:scale-95">‹</button>
@@ -192,18 +190,30 @@ export default function Page() {
       {err && <div className="m-4 p-3 rounded bg-warn/10 border border-warn/40 text-warn text-sm">{err}</div>}
 
       {!loading && !err && data && (
-        <Matrix times={times} courts={courts} cell={cell} onRowTap={setActiveStart} />
+        <Matrix times={times} courts={courts} cell={cell} onRowTap={(t) => { setActiveStart(t); setSheetDuration(Math.max(60, data?.minimumInterval ?? 60)); }} />
       )}
 
       {activeStart != null && (
         <Sheet onClose={() => setActiveStart(null)}>
-          <div className="px-4 pt-3 pb-2">
-            <div className="text-xs text-muted uppercase tracking-wider">Booking</div>
-            <div className="text-lg font-semibold tabular-nums">
-              {fmt(activeStart)} <span className="text-muted">–</span> {fmt(activeStart + duration)}
-              <span className="text-xs text-muted ml-2 font-normal">
-                {duration % 60 === 0 ? `${duration / 60}h` : `${duration}m`}
-              </span>
+          <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs text-muted uppercase tracking-wider">Start</div>
+              <div className="text-lg font-semibold tabular-nums">
+                {fmt(activeStart)} <span className="text-muted">–</span> {fmt(activeStart + sheetDuration)}
+              </div>
+            </div>
+            <div className="flex items-center bg-bg rounded-full border border-line p-0.5 flex-wrap">
+              {sheetDurations.map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setSheetDuration(d)}
+                  className={`px-2.5 h-8 rounded-full text-sm transition ${
+                    sheetDuration === d ? "bg-accent text-black font-semibold" : "text-muted"
+                  }`}
+                >
+                  {d % 60 === 0 ? `${d / 60}h` : `${d}m`}
+                </button>
+              ))}
             </div>
           </div>
 
