@@ -21,6 +21,14 @@ interface VenueConfig {
   // GetSettings only exposes the Guest role, so member-only options have
   // to be configured here. Surfaced in UI with a distinct colour.
   memberOnlyDurations?: number[];
+  // If true, treat every duration as member-only (whole venue is members
+  // only in practice). UI marks every duration pill gold and the warning
+  // modal shows the membership-required notice.
+  allDurationsMemberOnly?: boolean;
+  // If true, the venue exposes per-interval Cost via the public API but
+  // it doesn't reflect what members actually pay (they pay by membership,
+  // not per booking). UI shows £0 + the price disclaimer.
+  zeroPrice?: boolean;
 }
 
 export const VENUES: Record<VenueKey, VenueConfig> = {
@@ -41,6 +49,8 @@ export const VENUES: Record<VenueKey, VenueConfig> = {
     apiOrigin: "https://www.craigmillarparktennis.co.uk",
     venueId: "f30b1200-9806-4aa0-812a-8698b2ea079a",
     defaultRole: "member",
+    allDurationsMemberOnly: true,
+    zeroPrice: true,
   },
   grange: {
     key: "grange",
@@ -219,7 +229,7 @@ export function flattenSlots(
       const interval = open.Interval || data.MinimumInterval || 60;
       const costPerInterval = open.Cost ?? open.CostFrom ?? 0;
       const intervalsInSlot = Math.max(1, Math.round(duration / interval));
-      const priceTotal = +(costPerInterval * intervalsInSlot).toFixed(2);
+      const priceTotal = v.zeroPrice ? 0 : +(costPerInterval * intervalsInSlot).toFixed(2);
       for (let t = open.StartTime; t + duration <= open.EndTime; t += STEP) {
         const conflict = blocks.find((b) => t < b.EndTime && t + duration > b.StartTime);
         const available = !conflict;

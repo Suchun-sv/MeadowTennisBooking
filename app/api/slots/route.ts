@@ -30,6 +30,12 @@ export async function GET(req: NextRequest) {
       duration = ALLOWED_DURATIONS.includes(n) ? n : minDuration;
     }
     const slots = flattenSlots(venue, raw, date, duration);
+    // If the venue is members-only across the board, mark every offered
+    // duration as member-only so the UI styles them all in gold.
+    const memberOnlyDurations = new Set<number>(venue.memberOnlyDurations ?? []);
+    if (venue.allDurationsMemberOnly) {
+      for (let d = minDuration; d <= maxDuration; d += interval) memberOnlyDurations.add(d);
+    }
     return NextResponse.json({
       venue: { key: venue.key, label: venue.label },
       date,
@@ -38,7 +44,7 @@ export async function GET(req: NextRequest) {
       bookingInterval: interval,
       minDurationMinutes: minDuration,
       maxDurationMinutes: maxDuration,
-      memberOnlyDurations: venue.memberOnlyDurations ?? [],
+      memberOnlyDurations: [...memberOnlyDurations].sort((a, b) => a - b),
       slots,
     });
   } catch (e: unknown) {

@@ -272,7 +272,9 @@ export default function Page() {
                   >
                     <div className="text-sm font-semibold">{titleLabel}</div>
                     <div className="text-[11px] tabular-nums">
-                      £{s.priceTotal % 1 === 0 ? s.priceTotal : s.priceTotal.toFixed(2)}
+                      {s.priceTotal > 0
+                        ? `£${s.priceTotal % 1 === 0 ? s.priceTotal : s.priceTotal.toFixed(2)}`
+                        : "★"}
                     </div>
                   </button>
                 );
