@@ -2,11 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+type Kind = "outdoor" | "grass" | "indoor" | "ballMachine";
+
+const KIND_COLOURS: Record<Kind, { freeBg: string; freeBorder: string; freeText: string; cell: string }> = {
+  outdoor:     { freeBg: "bg-accent/15",  freeBorder: "border-accent/50",  freeText: "text-accent",  cell: "bg-accent/70" },
+  grass:       { freeBg: "bg-cyan-400/15", freeBorder: "border-cyan-400/50", freeText: "text-cyan-300", cell: "bg-cyan-400/70" },
+  indoor:      { freeBg: "bg-violet-400/15", freeBorder: "border-violet-400/50", freeText: "text-violet-300", cell: "bg-violet-400/70" },
+  ballMachine: { freeBg: "bg-warn/15",    freeBorder: "border-warn/50",    freeText: "text-warn",    cell: "bg-warn/70" },
+};
+
 interface Slot {
   courtId: string;
   courtName: string;
   courtNumber: number;
-  kind: "tennis" | "ballMachine";
+  kind: Kind;
   displayLabel: string;
   start: number;
   end: number;
@@ -110,10 +119,10 @@ export default function Page() {
 
   // Matrix is always 1h.
   const { times, courts, cell } = useMemo(() => {
-    if (!data) return { times: [] as number[], courts: [] as { id: string; name: string; n: number; label: string; kind: "tennis" | "ballMachine" }[], cell: new Map<string, Slot>() };
+    if (!data) return { times: [] as number[], courts: [] as { id: string; name: string; n: number; label: string; kind: Kind }[], cell: new Map<string, Slot>() };
     const cutoff = isToday ? nowMinutes() : -1;
     const tSet = new Set<number>();
-    const cMap = new Map<string, { id: string; name: string; n: number; label: string; kind: "tennis" | "ballMachine" }>();
+    const cMap = new Map<string, { id: string; name: string; n: number; label: string; kind: Kind }>();
     const cell = new Map<string, Slot>();
     for (const s of data.slots) {
       if (s.start < cutoff) continue;
@@ -213,12 +222,15 @@ export default function Page() {
           ) : (
             <div className="px-3 pb-4 grid grid-cols-4 gap-2">
               {activeRow.map((s) => {
-                const isMachine = s.kind === "ballMachine";
-                const cls = !s.available
-                  ? "bg-line/20 border-line text-muted/50"
-                  : isMachine
-                  ? "bg-warn/15 border-warn/50 text-warn active:scale-95 active:bg-warn/25"
-                  : "bg-accent/15 border-accent/50 text-accent active:scale-95 active:bg-accent/25";
+                const c = KIND_COLOURS[s.kind];
+                const cls = s.available
+                  ? `${c.freeBg} ${c.freeBorder} ${c.freeText} active:scale-95`
+                  : "bg-line/20 border-line text-muted/50";
+                const titleLabel =
+                  s.kind === "ballMachine" ? "Machine" :
+                  s.kind === "grass" ? `Grass ${s.displayLabel.replace(/^G/, "")}` :
+                  s.kind === "indoor" ? `Indoor ${s.displayLabel.replace(/^I/, "")}` :
+                  `Court ${s.displayLabel}`;
                 return (
                   <a
                     key={s.courtId}
@@ -228,9 +240,7 @@ export default function Page() {
                     title={s.reasonIfTaken}
                     className={`block rounded-xl py-2.5 text-center border ${cls}`}
                   >
-                    <div className="text-sm font-semibold">
-                      {isMachine ? "Machine" : `C${s.displayLabel}`}
-                    </div>
+                    <div className="text-sm font-semibold">{titleLabel}</div>
                     <div className="text-[11px] tabular-nums">
                       {s.available ? `£${Math.round((s.pricePerHour * sheetDuration) / 60)}` : "—"}
                     </div>
@@ -275,7 +285,7 @@ function Matrix({
   onRowTap,
 }: {
   times: number[];
-  courts: { id: string; name: string; n: number; label: string; kind: "tennis" | "ballMachine" }[];
+  courts: { id: string; name: string; n: number; label: string; kind: Kind }[];
   cell: Map<string, Slot>;
   onRowTap: (t: number) => void;
 }) {
@@ -290,7 +300,7 @@ function Matrix({
         <div className="grid bg-card border-b border-line text-[11px] text-muted font-medium" style={{ gridTemplateColumns: cols }}>
           <div className="py-2 text-center text-[10px] uppercase tracking-wider">time</div>
           {courts.map((c) => (
-            <div key={c.id} className={`py-2 text-center tabular-nums ${c.kind === "ballMachine" ? "text-warn font-semibold" : ""}`}>{c.label}</div>
+            <div key={c.id} className={`py-2 text-center tabular-nums font-semibold ${KIND_COLOURS[c.kind].freeText}`}>{c.label}</div>
           ))}
         </div>
         {/* rows */}
@@ -308,13 +318,10 @@ function Matrix({
                 {fmt(t)}
               </div>
               {rowSlots.map((s, i) => {
-                const isMachine = s?.kind === "ballMachine";
                 const cls = !s
                   ? "bg-transparent"
                   : s.available
-                  ? isMachine
-                    ? "bg-warn/70"
-                    : "bg-accent/70"
+                  ? KIND_COLOURS[s.kind].cell
                   : "bg-line/60";
                 return (
                   <div key={i} className="p-0.5">

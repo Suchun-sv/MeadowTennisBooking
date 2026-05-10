@@ -76,29 +76,28 @@ export interface RawResource {
   Days: { Date: string; Sessions: RawSession[] }[];
 }
 
-// Resource categories we want to surface, with display kind.
+// Resource categories we want to surface.
 const PADEL = 13;
 const BALL_MACHINE = 5;
-type Kind = "tennis" | "ballMachine";
-function kindOf(cat: number | undefined): Kind | null {
-  if (cat === BALL_MACHINE) return "ballMachine";
+// Visual kind. "outdoor" is the default green; grass/indoor/ballMachine each
+// get their own colour in the UI.
+type Kind = "outdoor" | "grass" | "indoor" | "ballMachine";
+
+function kindOf(cat: number | undefined, name: string): Kind | null {
   if (cat === PADEL) return null; // hide
-  return "tennis";
+  if (cat === BALL_MACHINE) return "ballMachine";
+  if (/grass/i.test(name)) return "grass";
+  if (/indoor/i.test(name)) return "indoor";
+  return "outdoor";
 }
 
 // Short, mobile-friendly label parsed from the Resource Name.
-// Examples:
-//   "Court 1"               -> "1"
-//   "Tennis Court 7"        -> "7"
-//   "Grass Court 2"         -> "G2"
-//   "Indoor Tennis 9"       -> "I9"
-//   "Tennis Ball Machine …" -> "M"
 function shortLabel(name: string, kind: Kind, fallback: number): string {
   if (kind === "ballMachine") return "M";
   const m = name.match(/(\d+)/);
   const num = m ? m[1] : String(fallback);
-  if (/grass/i.test(name)) return `G${num}`;
-  if (/indoor/i.test(name)) return `I${num}`;
+  if (kind === "grass") return `G${num}`;
+  if (kind === "indoor") return `I${num}`;
   return num;
 }
 export interface VenueSessionsResponse {
@@ -124,7 +123,7 @@ export interface Slot {
   courtId: string;
   courtName: string;
   courtNumber: number; // renumbered, 0-based, only across surfaced resources
-  kind: "tennis" | "ballMachine";
+  kind: Kind;
   displayLabel: string; // "1", "2"... for tennis; "M" for ball machine
   start: number;
   end: number;
@@ -174,7 +173,7 @@ export function flattenSlots(
 
   // Filter out hidden categories (e.g. Padel); derive short label from name.
   const surfaced = data.Resources
-    .map((r) => ({ r, kind: kindOf(r.Category) }))
+    .map((r) => ({ r, kind: kindOf(r.Category, r.Name) }))
     .filter((x): x is { r: RawResource; kind: Kind } => x.kind !== null);
   const meta = new Map<string, { kind: Kind; idx: number; label: string }>();
   surfaced.forEach(({ r, kind }, idx) => {
