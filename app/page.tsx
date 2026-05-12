@@ -415,15 +415,23 @@ export default function Page() {
   );
 }
 
-interface RainTier {
+interface Tier {
   label: string;
   text: string;
   rowBg: string;
+  severity: number; // higher = worse, used to pick the row tint
 }
-function rainTier(mm: number): RainTier | null {
-  if (mm >= 4) return { label: "heavy", text: "text-rose-300 font-semibold", rowBg: "bg-rose-500/15" };
-  if (mm >= 1) return { label: "mod", text: "text-amber-300", rowBg: "bg-amber-500/10" };
-  if (mm >= 0.2) return { label: "light", text: "text-sky-300", rowBg: "bg-sky-500/[0.06]" };
+function rainTier(mm: number): Tier | null {
+  if (mm >= 4) return { label: "heavy", text: "text-rose-300 font-semibold", rowBg: "bg-rose-500/15", severity: 3 };
+  if (mm >= 1) return { label: "mod", text: "text-amber-300", rowBg: "bg-amber-500/10", severity: 2 };
+  if (mm >= 0.2) return { label: "light", text: "text-sky-300", rowBg: "bg-sky-500/[0.06]", severity: 1 };
+  return null;
+}
+// km/h, Beaufort-ish buckets tuned for outdoor tennis.
+function windTier(kph: number): Tier | null {
+  if (kph >= 40) return { label: "strong", text: "text-fuchsia-300 font-semibold", rowBg: "bg-fuchsia-500/15", severity: 3 };
+  if (kph >= 25) return { label: "windy", text: "text-indigo-300", rowBg: "bg-indigo-500/10", severity: 2 };
+  if (kph >= 15) return { label: "breezy", text: "text-slate-300", rowBg: "bg-slate-400/[0.06]", severity: 1 };
   return null;
 }
 
@@ -461,14 +469,18 @@ function Matrix({
           const anyFree = freeCount > 0;
           const h = Math.floor(t / 60);
           const w = weather?.[h];
-          const tier = w ? rainTier(w.precipMm) : null;
+          const rain = w ? rainTier(w.precipMm) : null;
+          const wind = w ? windTier(w.windKph) : null;
+          // Tint the row with whichever condition is worse.
+          const worse =
+            rain && wind ? (rain.severity >= wind.severity ? rain : wind) : rain || wind;
           return (
             <button
               key={t}
               onClick={() => anyFree && onRowTap(t)}
               disabled={!anyFree}
               className={`grid w-full text-left border-b border-line/60 last:border-b-0 ${
-                tier?.rowBg ?? ""
+                worse?.rowBg ?? ""
               } ${anyFree ? "active:bg-line/30" : "opacity-60 cursor-not-allowed"}`}
               style={{ gridTemplateColumns: cols }}
             >
@@ -477,9 +489,14 @@ function Matrix({
                 {w && (
                   <>
                     <span className="text-[9px] text-muted/80">{Math.round(w.tempC)}°</span>
-                    {tier && (
-                      <span className={`text-[9px] ${tier.text}`} title={`${w.precipMm.toFixed(1)} mm/h`}>
-                        🌧{tier.label}
+                    {rain && (
+                      <span className={`text-[9px] ${rain.text}`} title={`${w.precipMm.toFixed(1)} mm/h`}>
+                        🌧{rain.label}
+                      </span>
+                    )}
+                    {wind && (
+                      <span className={`text-[9px] ${wind.text}`} title={`${Math.round(w.windKph)} km/h`}>
+                        🌬{wind.label}
                       </span>
                     )}
                   </>
