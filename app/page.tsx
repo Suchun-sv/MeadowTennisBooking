@@ -467,9 +467,9 @@ function Matrix({
                   const mm = w.precipMm;
                   let rainLabel: string | null = null;
                   let rainCls = "text-muted/70";
-                  if (mm >= 4) { rainLabel = "大雨"; rainCls = "text-red-400"; }
-                  else if (mm >= 1) { rainLabel = "中雨"; rainCls = "text-cyan-300"; }
-                  else if (mm >= 0.2) { rainLabel = "小雨"; rainCls = "text-cyan-300/80"; }
+                  if (mm >= 4) { rainLabel = "heavy"; rainCls = "text-red-400"; }
+                  else if (mm >= 1) { rainLabel = "mod"; rainCls = "text-cyan-300"; }
+                  else if (mm >= 0.2) { rainLabel = "light"; rainCls = "text-cyan-300/80"; }
                   return (
                     <>
                       <span className="text-[9px] text-muted/80">{Math.round(w.tempC)}°</span>
