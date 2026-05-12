@@ -463,11 +463,22 @@ function Matrix({
                   const h = Math.floor(t / 60);
                   const w = weather[h];
                   if (!w) return null;
-                  const rain = w.precipMm >= 0.2;
+                  // Bucket precipitation: dry / 小 / 中 / 大 (mm per hour)
+                  const mm = w.precipMm;
+                  let rainLabel: string | null = null;
+                  let rainCls = "text-muted/70";
+                  if (mm >= 4) { rainLabel = "大雨"; rainCls = "text-red-400"; }
+                  else if (mm >= 1) { rainLabel = "中雨"; rainCls = "text-cyan-300"; }
+                  else if (mm >= 0.2) { rainLabel = "小雨"; rainCls = "text-cyan-300/80"; }
                   return (
-                    <span className={`text-[9px] ${rain ? "text-cyan-300" : "text-muted/70"}`} title={rain ? `${w.precipMm.toFixed(1)}mm rain` : "dry"}>
-                      {Math.round(w.tempC)}°{rain ? " ☂" : ""}
-                    </span>
+                    <>
+                      <span className="text-[9px] text-muted/80">{Math.round(w.tempC)}°</span>
+                      {rainLabel && (
+                        <span className={`text-[9px] ${rainCls}`} title={`${mm.toFixed(1)} mm/h`}>
+                          🌧{rainLabel}
+                        </span>
+                      )}
+                    </>
                   );
                 })()}
               </div>
