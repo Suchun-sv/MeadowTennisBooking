@@ -418,20 +418,19 @@ export default function Page() {
 interface Tier {
   label: string;
   text: string;
-  rowBg: string;
-  severity: number; // higher = worse, used to pick the row tint
+  dot: string;
+  severity: number;
 }
 function rainTier(mm: number): Tier | null {
-  if (mm >= 4) return { label: "heavy", text: "text-rose-300 font-semibold", rowBg: "bg-rose-500/15", severity: 3 };
-  if (mm >= 1) return { label: "mod", text: "text-amber-300", rowBg: "bg-amber-500/10", severity: 2 };
-  if (mm >= 0.2) return { label: "light", text: "text-sky-300", rowBg: "bg-sky-500/[0.06]", severity: 1 };
+  if (mm >= 4) return { label: "heavy", text: "text-rose-300 font-semibold", dot: "bg-rose-400", severity: 3 };
+  if (mm >= 1) return { label: "mod", text: "text-amber-300", dot: "bg-amber-400", severity: 2 };
+  if (mm >= 0.2) return { label: "light", text: "text-sky-300", dot: "bg-sky-400", severity: 1 };
   return null;
 }
-// km/h, Beaufort-ish buckets tuned for outdoor tennis.
 function windTier(kph: number): Tier | null {
-  if (kph >= 40) return { label: "strong", text: "text-fuchsia-300 font-semibold", rowBg: "bg-fuchsia-500/15", severity: 3 };
-  if (kph >= 25) return { label: "windy", text: "text-indigo-300", rowBg: "bg-indigo-500/10", severity: 2 };
-  if (kph >= 15) return { label: "breezy", text: "text-slate-300", rowBg: "bg-slate-400/[0.06]", severity: 1 };
+  if (kph >= 40) return { label: "strong", text: "text-fuchsia-300 font-semibold", dot: "bg-fuchsia-400", severity: 3 };
+  if (kph >= 25) return { label: "windy", text: "text-indigo-300", dot: "bg-indigo-400", severity: 2 };
+  if (kph >= 15) return { label: "breezy", text: "text-slate-300", dot: "bg-slate-400", severity: 1 };
   return null;
 }
 
@@ -471,19 +470,23 @@ function Matrix({
           const w = weather?.[h];
           const rain = w ? rainTier(w.precipMm) : null;
           const wind = w ? windTier(w.windKph) : null;
-          // Tint the row with whichever condition is worse.
-          const worse =
-            rain && wind ? (rain.severity >= wind.severity ? rain : wind) : rain || wind;
           return (
             <button
               key={t}
               onClick={() => anyFree && onRowTap(t)}
               disabled={!anyFree}
-              className={`grid w-full text-left border-b border-line/60 last:border-b-0 ${
-                worse?.rowBg ?? ""
-              } ${anyFree ? "active:bg-line/30" : "opacity-60 cursor-not-allowed"}`}
+              className={`relative grid w-full text-left border-b border-line/60 last:border-b-0 ${
+                anyFree ? "active:bg-line/30" : "opacity-60 cursor-not-allowed"
+              }`}
               style={{ gridTemplateColumns: cols }}
             >
+              {/* severity stripe on the left edge — top half rain, bottom half wind */}
+              {(rain || wind) && (
+                <span className="absolute left-0 top-0 bottom-0 w-1 flex flex-col overflow-hidden">
+                  <span className={`flex-1 ${rain ? rain.dot : "bg-transparent"} ${rain && rain.severity >= 3 ? "animate-pulse" : ""}`} />
+                  <span className={`flex-1 ${wind ? wind.dot : "bg-transparent"} ${wind && wind.severity >= 3 ? "animate-pulse" : ""}`} />
+                </span>
+              )}
               <div className="py-1.5 text-center text-[11px] text-muted tabular-nums border-r border-line/60 flex flex-col items-center justify-center leading-tight">
                 <span>{fmt(t)}</span>
                 {w && (
