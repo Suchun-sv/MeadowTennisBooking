@@ -77,6 +77,22 @@ export default function Page() {
   const [sheetDuration, setSheetDuration] = useState(60);
   const [byDuration, setByDuration] = useState<Record<number, ApiResponse>>({});
   const [pending, setPending] = useState<{ link: string; memberOnly: boolean } | null>(null);
+  const [weather, setWeather] = useState<Record<number, { tempC: number; precipMm: number; code: number; windKph: number }> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setWeather(null);
+    fetch(`/api/weather?date=${date}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled || !j?.hourly) return;
+        const map: Record<number, { tempC: number; precipMm: number; code: number; windKph: number }> = {};
+        for (const h of j.hourly) map[h.hour] = { tempC: h.tempC, precipMm: h.precipMm, code: h.code, windKph: h.windKph };
+        setWeather(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [date]);
 
   // Guest-allowed durations + any member-only durations the venue config
   // surfaces (rendered in gold; require the user to confirm they're a
@@ -204,7 +220,13 @@ export default function Page() {
       {err && <div className="m-4 p-3 rounded bg-warn/10 border border-warn/40 text-warn text-sm">{err}</div>}
 
       {!loading && !err && data && (
-        <Matrix times={times} courts={courts} cell={cell} onRowTap={(t) => { setActiveStart(t); setSheetDuration(data?.minDurationMinutes ?? 60); }} />
+        <Matrix
+          times={times}
+          courts={courts}
+          cell={cell}
+          weather={weather}
+          onRowTap={(t) => { setActiveStart(t); setSheetDuration(data?.minDurationMinutes ?? 60); }}
+        />
       )}
 
       {activeStart != null && (
@@ -397,23 +419,25 @@ function Matrix({
   times,
   courts,
   cell,
+  weather,
   onRowTap,
 }: {
   times: number[];
   courts: { id: string; name: string; n: number; label: string; kind: Kind }[];
   cell: Map<string, Slot>;
+  weather: Record<number, { tempC: number; precipMm: number; code: number; windKph: number }> | null;
   onRowTap: (t: number) => void;
 }) {
   if (times.length === 0)
     return <div className="px-4 py-12 text-center text-muted text-sm">No bookable slots remaining.</div>;
-  // Build a CSS grid: time column (40px) + N courts (1fr each)
-  const cols = `40px repeat(${courts.length}, minmax(0, 1fr))`;
+  // 56px time column (wider to fit the inline weather glyph)
+  const cols = `56px repeat(${courts.length}, minmax(0, 1fr))`;
   return (
     <div className="px-2 py-2">
       <div className="rounded-2xl border border-line bg-card overflow-hidden">
         {/* header */}
         <div className="grid bg-card border-b border-line text-[11px] text-muted font-medium" style={{ gridTemplateColumns: cols }}>
-          <div className="py-2 text-center text-[10px] uppercase tracking-wider">time</div>
+          <div className="py-2 text-center text-[10px] uppercase tracking-wider">time · °C</div>
           {courts.map((c) => (
             <div key={c.id} className={`py-2 text-center tabular-nums font-semibold ${KIND_COLOURS[c.kind].freeText}`}>{c.label}</div>
           ))}
@@ -433,8 +457,19 @@ function Matrix({
               }`}
               style={{ gridTemplateColumns: cols }}
             >
-              <div className="py-1.5 text-center text-[11px] text-muted tabular-nums border-r border-line/60 flex items-center justify-center">
-                {fmt(t)}
+              <div className="py-1.5 text-center text-[11px] text-muted tabular-nums border-r border-line/60 flex flex-col items-center justify-center leading-tight">
+                <span>{fmt(t)}</span>
+                {weather && (() => {
+                  const h = Math.floor(t / 60);
+                  const w = weather[h];
+                  if (!w) return null;
+                  const rain = w.precipMm >= 0.2;
+                  return (
+                    <span className={`text-[9px] ${rain ? "text-cyan-300" : "text-muted/70"}`} title={rain ? `${w.precipMm.toFixed(1)}mm rain` : "dry"}>
+                      {Math.round(w.tempC)}°{rain ? " ☂" : ""}
+                    </span>
+                  );
+                })()}
               </div>
               {rowSlots.map((s, i) => {
                 const cls = !s
