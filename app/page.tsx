@@ -415,6 +415,18 @@ export default function Page() {
   );
 }
 
+interface RainTier {
+  label: string;
+  text: string;
+  rowBg: string;
+}
+function rainTier(mm: number): RainTier | null {
+  if (mm >= 4) return { label: "heavy", text: "text-rose-300 font-semibold", rowBg: "bg-rose-500/15" };
+  if (mm >= 1) return { label: "mod", text: "text-amber-300", rowBg: "bg-amber-500/10" };
+  if (mm >= 0.2) return { label: "light", text: "text-sky-300", rowBg: "bg-sky-500/[0.06]" };
+  return null;
+}
+
 function Matrix({
   times,
   courts,
@@ -447,40 +459,31 @@ function Matrix({
           const rowSlots = courts.map((c) => cell.get(`${t}|${c.id}`));
           const freeCount = rowSlots.filter((s) => s?.available).length;
           const anyFree = freeCount > 0;
+          const h = Math.floor(t / 60);
+          const w = weather?.[h];
+          const tier = w ? rainTier(w.precipMm) : null;
           return (
             <button
               key={t}
               onClick={() => anyFree && onRowTap(t)}
               disabled={!anyFree}
               className={`grid w-full text-left border-b border-line/60 last:border-b-0 ${
-                anyFree ? "active:bg-line/30" : "opacity-60 cursor-not-allowed"
-              }`}
+                tier?.rowBg ?? ""
+              } ${anyFree ? "active:bg-line/30" : "opacity-60 cursor-not-allowed"}`}
               style={{ gridTemplateColumns: cols }}
             >
               <div className="py-1.5 text-center text-[11px] text-muted tabular-nums border-r border-line/60 flex flex-col items-center justify-center leading-tight">
                 <span>{fmt(t)}</span>
-                {weather && (() => {
-                  const h = Math.floor(t / 60);
-                  const w = weather[h];
-                  if (!w) return null;
-                  // Bucket precipitation: dry / 小 / 中 / 大 (mm per hour)
-                  const mm = w.precipMm;
-                  let rainLabel: string | null = null;
-                  let rainCls = "text-muted/70";
-                  if (mm >= 4) { rainLabel = "heavy"; rainCls = "text-red-400"; }
-                  else if (mm >= 1) { rainLabel = "mod"; rainCls = "text-cyan-300"; }
-                  else if (mm >= 0.2) { rainLabel = "light"; rainCls = "text-cyan-300/80"; }
-                  return (
-                    <>
-                      <span className="text-[9px] text-muted/80">{Math.round(w.tempC)}°</span>
-                      {rainLabel && (
-                        <span className={`text-[9px] ${rainCls}`} title={`${mm.toFixed(1)} mm/h`}>
-                          🌧{rainLabel}
-                        </span>
-                      )}
-                    </>
-                  );
-                })()}
+                {w && (
+                  <>
+                    <span className="text-[9px] text-muted/80">{Math.round(w.tempC)}°</span>
+                    {tier && (
+                      <span className={`text-[9px] ${tier.text}`} title={`${w.precipMm.toFixed(1)} mm/h`}>
+                        🌧{tier.label}
+                      </span>
+                    )}
+                  </>
+                )}
               </div>
               {rowSlots.map((s, i) => {
                 const cls = !s
